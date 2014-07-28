@@ -1,6 +1,7 @@
 import os
 import pokereval, numpy, scipy.misc, pydot
 from matplotlib import pyplot as plot
+import xml.etree.ElementTree as ET
 numCards = 52
 numRanks = 13
 numSuits = 4
@@ -256,10 +257,20 @@ class Range:
                 frac = self.getAmbigFrac(ranks[i], ranks[j], i > j)
                 hexcolor = '#%02x%02x%02x' % (255*(1-frac), 255, 255*(1-frac))
                 result += '<rect x="' + str(i*20) + '" y="' + str(j*20) + '" width ="20" height="20" fill="'+ hexcolor+'"></rect>'
-                result += '<text x=' + str(i*20)+' y ='+str((j+1)*20) + ' font-size=12 >' + ranks[i] + ranks[j] + '</text>'
+                result += '<text x="' + str(i*20)+'" y ="'+str((j+1)*20) + '" font-size="12" >' + ranks[i] + ranks[j] + '</text>'
         result += '</svg>'
         return result
    
+    def getChart(self):
+      # return a list of strings to represent the chart
+      svg = self._repr_svg_()
+      svg_tree = ET.fromstring(svg)
+      chart_strings = []
+      for child in svg_tree:
+        child_text = child.text
+        if child_text:
+          chart_strings.append(child_text)
+      return chart_strings
     
     
     # Input:
@@ -415,6 +426,14 @@ class DecPt:
             return self.initial_bb_cip
         else:
             print "ERROR: DecPt.getPlayerCIP given player: " + player
+            
+    def __eq__(self, other):
+      if isinstance(other, DecPt):
+        return self.player == other.player and \
+               self.initial_sb_cip == other.initial_sb_cip and \
+               self.initial_bb_cip == other.initial_bb_cip and \
+               self.parentAction == other.parentAction
+        return NotImplemented
 
 # A simple approach to a tree structure:
 # Put all our decision points in a list (this implicitly numbers them):
@@ -470,6 +489,13 @@ class Tree:
             self.children[parentIndex].append(self.getNumPoints() - 1)
             self.parents.append(parentIndex)
     
+    
+    def removeDecPt(self, decPt):
+        """
+        We need to find if that decision point is a parent for any points
+        """
+        parent_index = self.decPts.index(decPt)
+        self.children.pop(parent_index)
     
     #Inputs: N/A
     #Outputs: returns a PNG file displaying a tree
@@ -660,7 +686,9 @@ def setMaxExplEVsAtLeaf(tree, iDecPt, strats, hero, villain):
     else: # we are seeing a showdown -- Hero's EVs are all (S-hero cip) + ((hero cip + vill cip) * equity)
         for i in range(0,numCards):
             for j in range(i+1,numCards):
-                strats.evs[hero][iDecPt][i,j] = (tree.effStack - currDecPt.getPlayerCIP(hero)) +                                            (currDecPt.getPlayerCIP(hero)+currDecPt.getPlayerCIP(villain))*                                            getEquityVsRange([i,j],strats.getMostRecentRangeOf(villain,iDecPt),currDecPt.eArray)
+                strats.evs[hero][iDecPt][i,j] = (tree.effStack - currDecPt.getPlayerCIP(hero)) + \
+                  (currDecPt.getPlayerCIP(hero)+currDecPt.getPlayerCIP(villain))* \
+                 getEquityVsRange([i,j],strats.getMostRecentRangeOf(villain,iDecPt),currDecPt.eArray)
     
     setHandsWithConflicts(strats.evs[hero][iDecPt], currDecPt.eArray.board, -1)
     
@@ -710,7 +738,7 @@ def setMaxExplEVsAtNatureDP(tree, iDecPt, strats, hero, villain):
                         comboCounts[iChild] = 0
                     else:
                         comboCounts[iChild] = villainRange.getNumHandsWithoutConflicts([i,j]) * tree.decPts[iChild].newCardFreq
-                    comboSum += comboCounts[iChild]
+                    comboSum += comboCounts[iChild] # TODO: mark
             strats.evs[hero][iDecPt][i][j] = 0
             if (comboSum == 0.0):
                 strats.evs[hero][iDecPt][i][j] = -1
@@ -812,4 +840,27 @@ def doFP(tree, nIter, sbStartingRange = None, bbStartingRange = None):
         print "BB average EV: " + str(getAvgEV(strats, 'BB', 0))
         
     return strats
-    
+
+if __name__ == "__main__":
+  """
+  S = 20
+  preflopEArray = EquityArray(pe.string2card(['__','__','__','__','__']))
+  point0 = DecPt('SB', 0.5, 1.0, preflopEArray, "")
+  point1 = DecPt('Leaf', 0.5, 1.0, preflopEArray, "fold")
+  point2 = DecPt('BB', 2.0, 1.0, preflopEArray, "bet")
+  point3 = DecPt('Leaf', 2.0, 1.0, preflopEArray, "fold")
+  point4 = DecPt('SB', 2.0, 20.0, preflopEArray, "bet")
+  point5 = DecPt('Leaf', 2.0, 20.0, preflopEArray, "fold")
+  point6 = DecPt('Leaf', 20.0, 20.0, preflopEArray, "call")
+  
+  minrShoveTree = Tree(S, point0)
+  minrShoveTree.addDecPt(point1,point0)
+  minrShoveTree.addDecPt(point2,point0)
+  minrShoveTree.addDecPt(point3,point2)
+  minrShoveTree.addDecPt(point4,point2)
+  minrShoveTree.addDecPt(point5,point4)
+  minrShoveTree.addDecPt(point6,point4)
+  minrShoveTree
+  """
+  r = Range()
+  print(r._repr_svg_())

@@ -3,17 +3,20 @@ Created on Jul 25, 2014
 @author: Mohammed Hamdy
 '''
 from PySide.QtGui import QTreeView, QStyledItemDelegate, QWidget, QLabel,\
-  QSpinBox, QLineEdit, QGridLayout, QApplication, QPushButton, QDialog,\
-  QHBoxLayout, QItemSelection
-from PySide.QtCore import QAbstractItemModel, Qt, QModelIndex
-from widgets import PointEditor, BoardComboBox
-from notebook import Tree, DecPt, pe
+  QSpinBox, QGridLayout, QApplication,  QDialog, QItemSelection, QMainWindow,\
+  QPushButton, QHBoxLayout
+from PySide.QtCore import QAbstractItemModel, Qt, QModelIndex, Signal
+from widgets import PointEditor, BoardComboCompound, StackSizeCompound, DoFPCompound
+from notebook import Tree, DecPt, pe, doFP
 from menus import PokerTreeMenu
+from chart import ChartTableView
 import sys
 
 class DecisionPointTreeItem(object):
   
-  def __init__(self, player='', sbChips=0, bbChips=0, board=None, action='', parentDec=None, newCardFreq=1.0):
+  def __init__(self, pointIndex, player='', sbChips=0, bbChips=0, board=None, action='', 
+               parentDec=None, newCardFreq=1.0):
+    self._index = pointIndex
     self._player = player
     self._sb_chips = sbChips
     self._bb_chips = bbChips
@@ -23,7 +26,9 @@ class DecisionPointTreeItem(object):
     self._new_card_freq = newCardFreq
     self._children = []
     if not parentDec:
-      self._children.append(RootDecisionPoint(parentDec=self)) 
+      self._children.append(RootDecisionPoint(-1, parentDec=self)) 
+    self._dec_pt = None
+    self._updateDecPt()
     
   def columnCount(self):
     return 1
@@ -58,6 +63,7 @@ class DecisionPointTreeItem(object):
     if bbChips: self._bb_chips = bbChips
     if board: self._board = board
     if action: self._action = action
+    self._updateDecPt()
   
   def parent(self):
     return self._parent
@@ -80,6 +86,16 @@ class DecisionPointTreeItem(object):
   def board(self):
     return self._board
   
+  def index(self):
+    return self._index
+  
+  def decPt(self):
+    return self._dec_pt
+  
+  def _updateDecPt(self):
+    self._dec_pt = DecPt(self._player, self._sb_chips, self._bb_chips, self._board,
+                         self._action.lower(), self._new_card_freq)
+  
   def __unicode__(self):
     return "<DecisionPointTreeItem %s at {:0x}>".format(self.data(), id(self))
   
@@ -92,9 +108,10 @@ class DecisionTreeModel(QAbstractItemModel):
   
   def __init__(self, rootItem=None, parent=None):
     super(DecisionTreeModel, self).__init__(parent)
+    self._point_count = 0
     if rootItem: self._root_item = rootItem
     else:
-      self._root_item = DecisionPointTreeItem()
+      self._root_item = DecisionPointTreeItem(-1)
     self._board = []
   
   def headerData(self, section, orientation, role):
@@ -189,9 +206,10 @@ class DecisionTreeModel(QAbstractItemModel):
       return self._root_item
     
   def _decisionPointFromDict(self, pointDict, parent):
-    dec_pt = DecisionPointTreeItem(pointDict["player"], pointDict["sbchips"], 
+    dec_pt = DecisionPointTreeItem(self._point_count, pointDict["player"], pointDict["sbchips"], 
                                              pointDict["bbchips"], action=pointDict["action"],
                                              board=pointDict["board"], parentDec=parent)
+    self._point_count += 1
     return dec_pt
     
 class PointEditorItemDelegate(QStyledItemDelegate):
@@ -201,7 +219,7 @@ class PointEditorItemDelegate(QStyledItemDelegate):
     self._board_combo = boardCombo
   
   def createEditor(self, parentWidget, styleOption, index):
-    editor = PointEditor(editMode=True, boardCombo=self._board_combo, parent=parentWidget)
+    editor = PointEditor(editMode=True, boardCombo=self._board_combo, parent=self.parent())
     return editor
   
   def setEditorData(self, editor, index):
@@ -223,36 +241,75 @@ class PointEditorItemDelegate(QStyledItemDelegate):
     model.setData(index, point_dict, Qt.EditRole)
   
   def updateEditorGeometry(self, editor, styleOption, index):
-    editor.setGeometry(styleOption.rect)
+    return None
     
 class GameTreeView(QTreeView):
-  def __init__(self, boardCombo, parent=None):
+  """
+  Represents the decision tree and updates a Tree object internally
+  """
+  
+  tree_updated = Signal()
+  
+  def __init__(self, boardCombo, treeStackSize=500, parent=None):
     super(GameTreeView, self).__init__(parent)
     self.setModel(DecisionTreeModel())
+    self._stacksize = treeStackSize
+    self._tree = None
+    self.model().rowsInserted.connect(self._updateTreeInsert)
+    self.model().rowsRemoved.connect(self._updateTreeRemove)
     self.setItemDelegate(PointEditorItemDelegate(boardCombo))
     
+  def setStackSize(self, stackSize):
+    self._stacksize = stackSize
+    
+  def _updateTreeInsert(self, parentIndex, start, end):
+    # start should be the same as end because we are inserting single rows
+    self.setExpanded(parentIndex, True)
+    parent_item = parentIndex.internalPointer()
+    inserted_item = parent_item.child(start)
+    if not isinstance(parent_item, RootDecisionPoint):
+      parent_decpt = parent_item.decPt()
+    decpt = inserted_item.decPt()
+    if self._tree is None:
+      self._tree = Tree(self._stacksize, decpt)
+    else:
+      self._tree.addDecPt(decpt, parent_decpt)
+    self.tree_updated.emit()
+    
+  def _updateTreeRemove(self, parentIndex, start, end):
+    parent_item = parentIndex.internalPointer()
+    removed_item = parent_item.child(start)
+    decpt = removed_item.decPt()
+    self._tree.removeDecPt(decpt)
+    self.tree_updated.emit()
     
 class TreeContainer(QWidget):
+  
+  selection_changed = Signal(int) # integer of the point index currenly selected
+  
   def __init__(self, parent=None):
     super(TreeContainer, self).__init__(parent)
-    label_stacksize = QLabel("Enter stack size")
-    self._spinbox_stacksize = QSpinBox()
-    label_board = QLabel("Enter the board (comma separated, no quotations)")
-    self._combobox_board = BoardComboBox()
-    self._treeview_game = GameTreeView(self._combobox_board)
+    self._stacksize_compound = StackSizeCompound()
+    self.combobox_compound = BoardComboCompound()
+    self.dofp_compound = DoFPCompound()
+    self._treeview_game = GameTreeView(self.combobox_compound.combobox_board)
+    self._treeview_game.tree_updated.connect(self._handleTreeUpdated)
+    self._stacksize_compound.spinbox_stacksize.setValue(500)
+    self._stacksize_compound.spinbox_stacksize.valueChanged.connect(self._handleSpinboxChange)
+    self.dofp_compound.button_execute.setEnabled(False)
+    self.dofp_compound.button_execute.clicked.connect(self._executeFP)
     selection_model = self._treeview_game.selectionModel()
     selection_model.selectionChanged.connect(self._updateMenus)
     layout = QGridLayout()
+    control_layout = QHBoxLayout()
+    control_layout.addWidget(self._stacksize_compound)
+    control_layout.addWidget(self.combobox_compound)
+    control_layout.addWidget(self.dofp_compound)
+    control_layout.addStretch()
     row = 0; col = 0;
-    layout.addWidget(label_stacksize, row, col)
-    col += 1
-    layout.addWidget(self._spinbox_stacksize, row, col)
-    col += 1
-    layout.addWidget(label_board, row, col)
-    col += 1
-    layout.addWidget(self._combobox_board, row, col)
+    layout.addLayout(control_layout, row, col, 1, 2)
     row += 1; col = 0
-    layout.addWidget(self._treeview_game, row, col, 1, 4)
+    layout.addWidget(self._treeview_game, row, col, 1, 2)
     self.setLayout(layout)
     self.setWindowTitle("Game Tree Viewer")
     self._setupContextMenu()
@@ -291,7 +348,7 @@ class TreeContainer(QWidget):
     point_dialog = PointEditor(selected_item.player(), selected_item.sbChips(),
                                selected_item.bbChips(), selected_item.action(),
                                selected_item.board(),
-                               boardCombo=self._combobox_board, parent=self)
+                               boardCombo=self.combobox_compound.combobox_board, parent=self)
     result = point_dialog.exec_()
     if result == QDialog.Accepted:
       result_dict = {}
@@ -306,19 +363,25 @@ class TreeContainer(QWidget):
     
   def _addPoint(self):
     point_params = self._getPointParams()
+    selected_indexes = self._getSelectedIndexes()
+    selected_point_index = selected_indexes[0]
+    point = selected_point_index.internalPointer()
+    self.selection_changed.emit(point.index())
     if point_params is None:
       return
     model = self._treeview_game.model()
-    selected_indexes = self._getSelectedIndexes()
-    model.addPoint(selected_indexes[0], point_params)
+    model.addPoint(selected_point_index, point_params)
     self._recheckMenus() # it seems pyside has a bug when updating the tree the deselection is not detected, invalidating the buttons
     
   def _addNestedPoint(self):
     point_params = self._getPointParams()
+    selected_indexes = self._getSelectedIndexes()
+    selected_point_index = selected_indexes[0]
+    point = selected_point_index.internalPointer()
+    self.selection_changed.emit(point.index())
     if point_params is None:
       return
     model = self._treeview_game.model()
-    selected_indexes = self._getSelectedIndexes()
     model.addNestedPoint(selected_indexes[0], point_params)
     
   def _deletePoint(self):
@@ -335,8 +398,41 @@ class TreeContainer(QWidget):
     selected_indexes = self._getSelectedIndexes()
     self._updateMenus(selected_indexes, [])
     
+  def _handleSpinboxChange(self):
+    self._treeview_game.setStackSize(self._stacksize_compound.spinbox_stacksize.value())
+    
+  def _executeFP(self):
+    tree = self._treeview_game._tree
+    self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value())
+    self._button_execute_fp.setEnabled(False)
+    
+  def _handleTreeUpdated(self):
+    self.dofp_compound.button_execute.setEnabled(True)
+    
+  def _handleSelectionChanged(self, pointIndex):
+    if self._soln is not None:
+      selected_range = self._soln.ranges[pointIndex]
+      self._tableview_chart.selected_range_changed.emit(selected_range)
+      
+   
+    
+class MainWindow(QMainWindow):
+  def __init__(self):
+    super(MainWindow, self).__init__()
+    self._tree_container = TreeContainer()
+    self._tableview_chart = ChartTableView()
+    central_widget = QWidget()
+    layout = QGridLayout()
+    row = 0; col = 0
+    layout.addWidget(self._tree_container, row, col, 1, 5)
+    row += 1
+    layout.addWidget(self._tableview_chart, row, col, 1, 5)
+    central_widget.setLayout(layout)
+    self.setCentralWidget(central_widget)
+    self.setWindowTitle("Poker Viewer")
+  
 if __name__ == "__main__":
   app = QApplication(sys.argv)
-  main = TreeContainer()
-  main.show()
+  main = MainWindow()
+  main.showMaximized()
   sys.exit(app.exec_())
