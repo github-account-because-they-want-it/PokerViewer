@@ -10,12 +10,19 @@ from PySide.QtCore import Qt
 from notebook import MyEquityArray
 
 class BoardComboBox(QComboBox):
-  def __init__(self, parent=None):
+  def __init__(self, loadDiskBoards=True, parent=None):
     super(BoardComboBox, self).__init__(parent)
     self.setEditable(True)
     self.setInsertPolicy(self.InsertAtTop)
     self._boards = []
     self._board_texts = []
+    if loadDiskBoards:
+      board_objects = MyEquityArray.loadDiskBoards()
+      self._boards = board_objects
+      board_lists = [board.boardArray() for board in board_objects]
+      board_texts = [','.join(board_list) for board_list in board_lists]
+      self._board_texts = board_texts
+      self.setModel(QStringListModel(board_texts))
     
   def createBoard(self):
     board_text = self.lineEdit().text()
@@ -36,7 +43,7 @@ class BoardComboCompound(QGroupBox):
     button_add_board.setMinimumWidth(100)
     button_add_board.clicked.connect(self._addBoard)
     self.combobox_board = BoardComboBox()
-    self.combobox_board.setMinimumWidth(100)
+    self.combobox_board.setMinimumWidth(120)
     layout = QHBoxLayout()
     layout.addWidget(self.combobox_board)
     layout.addWidget(button_add_board)

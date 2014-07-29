@@ -2,12 +2,12 @@
 Created on Jul 25, 2014
 @author: Mohammed Hamdy
 '''
-from PySide.QtGui import QTreeView, QStyledItemDelegate, QWidget, QLabel,\
-  QSpinBox, QGridLayout, QApplication,  QDialog, QItemSelection, QMainWindow,\
-  QPushButton, QHBoxLayout
+from PySide.QtGui import QTreeView, QStyledItemDelegate, QWidget, \
+  QGridLayout, QApplication,  QDialog, QItemSelection, QMainWindow,\
+  QHBoxLayout
 from PySide.QtCore import QAbstractItemModel, Qt, QModelIndex, Signal
 from widgets import PointEditor, BoardComboCompound, StackSizeCompound, DoFPCompound
-from notebook import Tree, DecPt, pe, doFP
+from notebook import Tree, DecPt, pe, doFP, Range
 from menus import PokerTreeMenu
 from chart import ChartTableView
 import sys
@@ -403,7 +403,7 @@ class TreeContainer(QWidget):
     
   def _executeFP(self):
     tree = self._treeview_game._tree
-    self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value())
+    self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value(), Range(1.0), Range(1.0))
     self._button_execute_fp.setEnabled(False)
     
   def _handleTreeUpdated(self):

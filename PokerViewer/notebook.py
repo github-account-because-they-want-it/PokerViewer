@@ -81,11 +81,39 @@ class EquityArray:
         boardStr = boardStr + '.ea.npy'
         return boardStr
       
+    @staticmethod
+    def loadDiskBoards(path=None, maxBoards=10):
+      # load equity arrays from disk and return equity arrays 
+      equity_list = []
+      if path is None: # search is the script directory
+        path = os.path.abspath(os.path.join(__file__, os.path.pardir))
+      files_here = os.listdir(path)
+      board_files = [f for f in files_here if f.endswith(".ea.npy")]
+      board_files = board_files[:maxBoards]
+      # get the board list of strings from the file name
+      file_names = [bf.split(".ea.npy")[0] for bf in board_files]
+      iterators = [iter(fname) for fname in file_names]
+      for it, fname in zip(iterators, file_names):
+        if fname == "preflop":
+          equity_list.append(MyEquityArray(["__", "__", "__", "__", "__"]))
+        else:
+          board_list = []
+          for _ in range(len(fname) / 2):
+            board_list.append(''.join([next(it), next(it)]))
+          board_len = len(board_list)
+          if board_len < 5:
+            [board_list.append("__") for _ in range(5 - board_len)]
+          equity_list.append(MyEquityArray(board_list))
+      return equity_list
+      
 class MyEquityArray(EquityArray):
   
   def __init__(self, boardArray):
     EquityArray.__init__(self, pe.string2card(boardArray))
     self._board_array = boardArray
+    
+  def boardArray(self):
+    return self._board_array
     
   def originalBoard(self):
     return ','.join(self._board_array)
