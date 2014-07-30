@@ -105,6 +105,7 @@ class EquityArray:
             [board_list.append("__") for _ in range(5 - board_len)]
           equity_list.append(MyEquityArray(board_list))
       return equity_list
+    
       
 class MyEquityArray(EquityArray):
   
@@ -117,6 +118,13 @@ class MyEquityArray(EquityArray):
     
   def originalBoard(self):
     return ','.join(self._board_array)
+  
+  def __getstate__(self):
+      return self._board_array
+    
+  def __setstate__(self, state):
+    inst = MyEquityArray(state)
+    self.__dict__ = inst.__dict__
     
   def __str__(self):
     return ''.join(self._board_array)

@@ -6,10 +6,12 @@ from PySide.QtGui import QTreeView, QStyledItemDelegate, QWidget, \
   QGridLayout, QApplication,  QDialog, QItemSelection, QMainWindow,\
   QHBoxLayout
 from PySide.QtCore import QAbstractItemModel, Qt, QModelIndex, Signal
-from widgets import PointEditor, BoardComboCompound, StackSizeCompound, DoFPCompound
+from widgets import PointEditor, BoardComboCompound, StackSizeCompound, DoFPCompound, TreeSaveDialog,\
+                    TreeLoadDialog, DoFPParametersDialog
 from notebook import Tree, DecPt, pe, doFP, Range
-from menus import PokerTreeMenu
+from menus import PokerTreeMenu, FileMenuBar
 from chart import ChartTableView
+from util import TreeLoadSaveHandler
 import sys
 
 class DecisionPointTreeItem(object):
@@ -262,6 +264,19 @@ class GameTreeView(QTreeView):
   def setStackSize(self, stackSize):
     self._stacksize = stackSize
     
+  def treeObject(self):
+    return self._tree
+    
+  def setTreeObject(self, treeObject):
+    self._tree = treeObject
+    
+  def rootItem(self):
+    return self.model()._root_item
+    
+  def setRootItem(self, rootItem):
+    model = DecisionTreeModel()
+    self.setModel(model)
+    
   def _updateTreeInsert(self, parentIndex, start, end):
     # start should be the same as end because we are inserting single rows
     self.setExpanded(parentIndex, True)
@@ -292,13 +307,13 @@ class TreeContainer(QWidget):
     self._stacksize_compound = StackSizeCompound()
     self.combobox_compound = BoardComboCompound()
     self.dofp_compound = DoFPCompound()
-    self._treeview_game = GameTreeView(self.combobox_compound.combobox_board)
-    self._treeview_game.tree_updated.connect(self._handleTreeUpdated)
+    self.treeview_game = GameTreeView(self.combobox_compound.combobox_board)
+    self.treeview_game.tree_updated.connect(self._handleTreeUpdated)
     self._stacksize_compound.spinbox_stacksize.setValue(500)
     self._stacksize_compound.spinbox_stacksize.valueChanged.connect(self._handleSpinboxChange)
     self.dofp_compound.button_execute.setEnabled(False)
     self.dofp_compound.button_execute.clicked.connect(self._executeFP)
-    selection_model = self._treeview_game.selectionModel()
+    selection_model = self.treeview_game.selectionModel()
     selection_model.selectionChanged.connect(self._updateMenus)
     layout = QGridLayout()
     control_layout = QHBoxLayout()
@@ -309,7 +324,7 @@ class TreeContainer(QWidget):
     row = 0; col = 0;
     layout.addLayout(control_layout, row, col, 1, 2)
     row += 1; col = 0
-    layout.addWidget(self._treeview_game, row, col, 1, 2)
+    layout.addWidget(self.treeview_game, row, col, 1, 2)
     self.setLayout(layout)
     self.setWindowTitle("Game Tree Viewer")
     self._setupContextMenu()
@@ -369,7 +384,7 @@ class TreeContainer(QWidget):
     self.selection_changed.emit(point.index())
     if point_params is None:
       return
-    model = self._treeview_game.model()
+    model = self.treeview_game.model()
     model.addPoint(selected_point_index, point_params)
     self._recheckMenus() # it seems pyside has a bug when updating the tree the deselection is not detected, invalidating the buttons
     
@@ -381,16 +396,16 @@ class TreeContainer(QWidget):
     self.selection_changed.emit(point.index())
     if point_params is None:
       return
-    model = self._treeview_game.model()
+    model = self.treeview_game.model()
     model.addNestedPoint(selected_indexes[0], point_params)
     
   def _deletePoint(self):
     selected_point_index = self._getSelectedIndexes()[0]
-    model = self._treeview_game.model()
+    model = self.treeview_game.model()
     model.deletePoint(selected_point_index)
     
   def _getSelectedIndexes(self):
-    selection_model = self._treeview_game.selectionModel()
+    selection_model = self.treeview_game.selectionModel()
     selected_indexes = selection_model.selectedIndexes()
     return selected_indexes
   
@@ -399,12 +414,30 @@ class TreeContainer(QWidget):
     self._updateMenus(selected_indexes, [])
     
   def _handleSpinboxChange(self):
-    self._treeview_game.setStackSize(self._stacksize_compound.spinbox_stacksize.value())
+    self.treeview_game.setStackSize(self._stacksize_compound.spinbox_stacksize.value())
     
   def _executeFP(self):
-    tree = self._treeview_game._tree
-    self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value(), Range(1.0), Range(1.0))
-    self._button_execute_fp.setEnabled(False)
+    tree = self.treeview_game._tree
+    dialog_titles = ["Enter first range arguments", "Enter second range arguments"]
+    dialogs = []
+    for i in range(2):
+      fp_params_dialog = DoFPParametersDialog(boardCombo=self.combobox_compound.combobox_board, 
+                                              title=dialog_titles[i])
+      dialogs.append(fp_params_dialog)
+      accepted = fp_params_dialog.exec_()
+      if not accepted:
+        break
+    else: # both accepted
+      range1 = dialogs[0].getRange()
+      range2 = dialogs[1].getRange()
+      """
+      print("Children : {}".format(tree.children))
+      print("Parents : {}".format(tree.parents))
+      print("DecPts : {}".format(tree.decPts))
+      print("Stack : {}".format(tree.effStack))
+      """
+      self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value(), range1, range2)
+      self._button_execute_fp.setEnabled(False)
     
   def _handleTreeUpdated(self):
     self.dofp_compound.button_execute.setEnabled(True)
@@ -415,7 +448,6 @@ class TreeContainer(QWidget):
       self._tableview_chart.selected_range_changed.emit(selected_range)
       
    
-    
 class MainWindow(QMainWindow):
   def __init__(self):
     super(MainWindow, self).__init__()
@@ -429,7 +461,32 @@ class MainWindow(QMainWindow):
     layout.addWidget(self._tableview_chart, row, col, 1, 5)
     central_widget.setLayout(layout)
     self.setCentralWidget(central_widget)
+    self._setupMenuBar()
     self.setWindowTitle("Poker Viewer")
+    
+  def _setupMenuBar(self):
+    self._menubar = FileMenuBar()
+    self.setMenuBar(self._menubar)
+    self._menubar.file_menu.action_save_tree.triggered.connect(self._saveTree)
+    self._menubar.file_menu.action_load_tree.triggered.connect(self._loadTree)
+    
+  def _saveTree(self):
+    save_dialog = TreeSaveDialog(self)
+    accepted = save_dialog.exec_()
+    if accepted:
+      filename = save_dialog.selectedFiles()[0]
+      root_item = self._tree_container.treeview_game.rootItem()
+      tree_object = self._tree_container.treeview_game.treeObject()
+      TreeLoadSaveHandler.saveTree(filename, root_item, tree_object)
+  
+  def _loadTree(self):
+    load_dialog = TreeLoadDialog(self)
+    accepted = load_dialog.exec_()
+    if accepted:
+      filename = load_dialog.selectedFiles()[0]
+      root_item, tree_object = TreeLoadSaveHandler.loadTree(filename)
+      self._tree_container.treeview_game.setRootItem(root_item)
+      self._tree_container.treeview_game.setTreeObject(tree_object)
   
 if __name__ == "__main__":
   app = QApplication(sys.argv)

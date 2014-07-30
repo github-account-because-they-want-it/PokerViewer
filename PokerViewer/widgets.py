@@ -5,9 +5,10 @@ Created on Jul 25, 2014
 
 from PySide.QtGui import QLabel, QComboBox, QDoubleSpinBox, QStringListModel,\
   QDialog, QGridLayout, QPushButton, QWidget, QHBoxLayout, QRadioButton,\
-  QSpinBox, QGroupBox
-from PySide.QtCore import Qt
-from notebook import MyEquityArray
+  QSpinBox, QGroupBox, QFileDialog, QLineEdit
+from PySide.QtCore import Qt, Signal
+from notebook import MyEquityArray, Range
+from util import getScriptDirectory
 
 class BoardComboBox(QComboBox):
   def __init__(self, loadDiskBoards=True, parent=None):
@@ -67,10 +68,11 @@ class DoFPCompound(QGroupBox):
   def __init__(self, parent=None):
     super(DoFPCompound, self).__init__(parent)
     self.setTitle("doFP")
-    self.button_execute = QPushButton("Execute")
+    self.button_execute = QPushButton("Execute ...")
     self.spinbox_iterations = QSpinBox()
     self.spinbox_iterations.setMaximum(9999)
     self.spinbox_iterations.setValue(200)
+    self.spinbox_iterations.setToolTip("No. iterations")
     layout = QHBoxLayout()
     layout.addWidget(self.spinbox_iterations)
     layout.addWidget(self.button_execute)
@@ -82,6 +84,9 @@ class BetAmountSpinBox(QDoubleSpinBox):
     self.setMaximum(999999999)
     
 class HorizontalRadioGroup(QWidget):
+  
+  radio_checked = Signal(unicode)
+  
   def __init__(self, radioStrings, checkedRadio='', parent=None):
     super(HorizontalRadioGroup, self).__init__(parent)
     self._radios = []
@@ -90,6 +95,7 @@ class HorizontalRadioGroup(QWidget):
       # radio buttons have have text for display and original text. they only differ for empty strings
       radiobutton = QRadioButton()
       radiobutton.setProperty("_original_value", original_s)
+      radiobutton.clicked.connect(self._handleRadioClicked)
       display_s = original_s if original_s else "(empty)"
       radiobutton.setText(display_s)
       if original_s == checkedRadio:
@@ -107,6 +113,13 @@ class HorizontalRadioGroup(QWidget):
     for radio in self._radios:
       if radio.property("_original_value") == comboValue:
         radio.setChecked(True)
+        return
+      
+  def _handleRadioClicked(self, checked=False):
+    # get the checked radio button and emit it
+    for radio in self._radios:
+      if radio.isChecked():
+        self.radio_checked.emit(radio.text())
         return
       
 class ActionRadioGroup(HorizontalRadioGroup):
@@ -200,7 +213,7 @@ class PointEditor(QDialog):
     
   def board(self):
     if len(self._boards):
-      return self._boards[self.combobox_board.currentIndex() - 1]
+      return self._boards[self.combobox_board.currentIndex()]
     else:
       return None
   
@@ -214,10 +227,147 @@ class PointEditor(QDialog):
     self._radiogroup_action.setCheckedCombo(action)
     
   def _getComboItems(self, combobox):
-    model = combobox.model()
     items = []
     for i in range(combobox.count()):
-      items.append(model.item(i).data(Qt.DisplayRole))
+      items.append(combobox.itemData(i, Qt.DisplayRole))
       
     return items
     
+class TreeSaveDialog(QFileDialog):
+  def __init__(self, parent=None):
+    super(TreeSaveDialog, self).__init__(parent)
+    self.setFileMode(QFileDialog.AnyFile)
+    self.setDirectory(getScriptDirectory())
+    self.setNameFilter("Tree Files (*.tree)")
+    self.setWindowTitle("Select save location")
+    
+class TreeLoadDialog(QFileDialog):
+  def __init__(self, parent=None):
+    super(TreeLoadDialog, self).__init__(parent)
+    self.setDirectory(getScriptDirectory())
+    self.setNameFilter("Tree files (*.tree)")
+    self.setFileMode(QFileDialog.ExistingFile)
+    self.setWindowTitle("Select a tree to load")
+    
+class SetAllFracsSpinBox(QDoubleSpinBox):
+  """A normal spinbox. created for consistency"""
+  def __init__(self, default=1.0, parent=None):
+    super(SetAllFracsSpinBox, self).__init__(parent)
+    self.setMaximum(9999)
+    self.setValue(default)
+    
+class SetRangeStringCompound(QWidget):
+  def __init__(self, parent=None):
+    super(SetRangeStringCompound, self).__init__(parent)
+    label_string = QLabel("Range string")
+    self.lineedit_string = QLineEdit()
+    self.lineedit_string.setMinimumWidth(100)
+    label_value = QLabel("Value")
+    self.spinbox_value = QDoubleSpinBox()
+    self.spinbox_value.setMaximum(9999)
+    self.spinbox_value.setValue(1.0)
+    row = 0 ; col = 0;
+    layout = QGridLayout()
+    layout.addWidget(label_string, row, col)
+    col += 1
+    layout.addWidget(self.lineedit_string, row, col)
+    row += 1; col = 0;
+    layout.addWidget(label_value, row, col)
+    col += 1
+    layout.addWidget(self.spinbox_value, row, col)
+    self.setLayout(layout)
+    
+class SetToTopCompound(QWidget):
+  def __init__(self, boardCombo=None, parent=None):
+    super(SetToTopCompound, self).__init__(parent)
+    label_fraction = QLabel("Fraction")
+    self.spinbox_fraction = QDoubleSpinBox()
+    label_board = QLabel("Board")
+    self.combobox_board = QComboBox()
+    self._boards = []
+    if boardCombo is not None:
+      self.combobox_board.setModel(boardCombo.model())
+      self._boards = boardCombo.boards()
+    layout = QGridLayout()
+    row = 0; col = 0
+    layout.addWidget(label_fraction, row, col)
+    col += 1
+    layout.addWidget(self.spinbox_fraction, row, col)
+    row += 1; col = 0;
+    layout.addWidget(label_board, row, col)
+    col += 1
+    layout.addWidget(self.combobox_board, row, col)
+    self.setLayout(layout)
+  
+class DoFPParametersDialog(QDialog):
+  
+  AFTER_CONSTRUCTION_ALLFRAC = 1
+  AFTER_CONSTRUCTION_RANGESTRING = 2
+  AFTER_CONSTRUCTION_TOTOP = 3
+  
+  def __init__(self, rangeConstructor=1.0,  boardCombo=None, title="Enter first range arguments", parent=None):
+    super(DoFPParametersDialog, self).__init__(parent)
+    self._after_method = 2
+    self._board_combo = boardCombo
+    label_constructor = QLabel("Constructor argument <b>(initFrac)</b>")
+    self._spinbox_constructor = QSpinBox()
+    self._spinbox_constructor.setMaximum(9999)
+    self._spinbox_constructor.setValue(rangeConstructor)
+    label_after_construction = QLabel("After construction method")
+    self._radiogroup_methods = HorizontalRadioGroup(["setRangeString()", "setAllFracs()", "setToTop()"])
+    self._radiogroup_methods.radio_checked.connect(self._updateLayout)
+    self._radiogroup_methods._radios[0].setChecked(True) # dunno why it's not checked by default
+    label_method_args = QLabel("Method arguments")
+    self._widget_method_args = SetRangeStringCompound()
+    button_ok = QPushButton("Ok")
+    button_ok.clicked.connect(self.accept)
+    button_cancel = QPushButton("Cancel")
+    button_cancel.clicked.connect(self.reject)
+    layout = QGridLayout()
+    row = 0; col = 0;
+    layout.addWidget(label_constructor, row, col)
+    col += 1
+    layout.addWidget(self._spinbox_constructor, row, col)
+    row += 1; col = 0;
+    layout.addWidget(label_after_construction, row, col)
+    col += 1
+    layout.addWidget(self._radiogroup_methods)
+    row += 1; col = 0;
+    layout.addWidget(label_method_args, row, col)
+    col += 1
+    self._update_pos = (row, col)
+    layout.addWidget(self._widget_method_args, row, col)
+    row += 1; col = 0
+    layout.addWidget(button_ok, row, col)
+    col += 1
+    layout.addWidget(button_cancel, row, col)
+    self.setLayout(layout)
+    self.setWindowTitle(title)
+    
+  def _updateLayout(self, radioString):
+    self._widget_method_args.setParent(None)
+    self.layout().removeWidget(self._widget_method_args)
+    if radioString == "setRangeString()":
+      self._after_method = self.AFTER_CONSTRUCTION_RANGESTRING
+      self._widget_method_args = SetRangeStringCompound()
+    elif radioString == "setAllFracs()":
+      self._after_method = self.AFTER_CONSTRUCTION_ALLFRAC
+      self._widget_method_args = SetAllFracsSpinBox()
+    elif radioString == "setToTop()":
+      self._after_method = self.AFTER_CONSTRUCTION_TOTOP
+      self._widget_method_args = SetToTopCompound(self._board_combo)
+    self.layout().update()
+    self.layout().addWidget(self._widget_method_args, self._update_pos[0], self._update_pos[1])
+    
+  def getRange(self):
+    # construct a range object and return it
+    r = Range(self._spinbox_constructor.value())
+    if self._after_method == self.AFTER_CONSTRUCTION_ALLFRAC:
+      r.setAllFracs(self._widget_method_args.value())
+    elif self._after_method == self.AFTER_CONSTRUCTION_RANGESTRING:
+      r.setRangeString(self._widget_method_args.lineedit_string.text(), 
+                       self._widget_method_args.spinbox_value.value())
+    elif self._after_method == self.AFTER_CONSTRUCTION_TOTOP:
+      r.setToTop(self._widget_method_args.spinbox_fraction.value(), 
+                 self._board_combo.boards()[self._widget_method_args.combobox_board.currentIndex()])
+    return r
