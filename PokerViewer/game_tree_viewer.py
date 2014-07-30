@@ -98,7 +98,7 @@ class DecisionPointTreeItem(object):
     self._dec_pt = DecPt(self._player, self._sb_chips, self._bb_chips, self._board,
                          self._action.lower(), self._new_card_freq)
   
-  def __unicode__(self):
+  def __str__(self):
     return "<DecisionPointTreeItem %s at {:0x}>".format(self.data(), id(self))
   
 class RootDecisionPoint(DecisionPointTreeItem):
@@ -274,7 +274,7 @@ class GameTreeView(QTreeView):
     return self.model()._root_item
     
   def setRootItem(self, rootItem):
-    model = DecisionTreeModel()
+    model = DecisionTreeModel(rootItem)
     self.setModel(model)
     
   def _updateTreeInsert(self, parentIndex, start, end):
@@ -430,12 +430,10 @@ class TreeContainer(QWidget):
     else: # both accepted
       range1 = dialogs[0].getRange()
       range2 = dialogs[1].getRange()
-      """
       print("Children : {}".format(tree.children))
       print("Parents : {}".format(tree.parents))
       print("DecPts : {}".format(tree.decPts))
       print("Stack : {}".format(tree.effStack))
-      """
       self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value(), range1, range2)
       self._button_execute_fp.setEnabled(False)
     
@@ -462,6 +460,7 @@ class MainWindow(QMainWindow):
     central_widget.setLayout(layout)
     self.setCentralWidget(central_widget)
     self._setupMenuBar()
+    self.statusBar()
     self.setWindowTitle("Poker Viewer")
     
   def _setupMenuBar(self):
@@ -478,6 +477,7 @@ class MainWindow(QMainWindow):
       root_item = self._tree_container.treeview_game.rootItem()
       tree_object = self._tree_container.treeview_game.treeObject()
       TreeLoadSaveHandler.saveTree(filename, root_item, tree_object)
+      self.statusBar().showMessage("Tree saved successfully", 5000)
   
   def _loadTree(self):
     load_dialog = TreeLoadDialog(self)
@@ -487,6 +487,7 @@ class MainWindow(QMainWindow):
       root_item, tree_object = TreeLoadSaveHandler.loadTree(filename)
       self._tree_container.treeview_game.setRootItem(root_item)
       self._tree_container.treeview_game.setTreeObject(tree_object)
+      self.statusBar().showMessage("Tree loaded", 5000)
   
 if __name__ == "__main__":
   app = QApplication(sys.argv)

@@ -470,6 +470,10 @@ class DecPt:
                self.initial_bb_cip == other.initial_bb_cip and \
                self.parentAction == other.parentAction
         return NotImplemented
+      
+    def __str__(self):
+      return "<DecPt {} ({}, {}) at 0x{:0x}>".format(self.player, self.initial_sb_cip, self.initial_bb_cip,
+                                                   id(self))
 
 # A simple approach to a tree structure:
 # Put all our decision points in a list (this implicitly numbers them):
