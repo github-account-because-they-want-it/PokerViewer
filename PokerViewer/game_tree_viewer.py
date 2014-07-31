@@ -12,7 +12,7 @@ from notebook import Tree, DecPt, pe, doFP, Range
 from menus import PokerTreeMenu, FileMenuBar
 from chart import ChartTableView
 from util import TreeLoadSaveHandler
-import sys
+import sys, copy
 
 class DecisionPointTreeItem(object):
   
@@ -108,6 +108,8 @@ class RootDecisionPoint(DecisionPointTreeItem):
   
 class DecisionTreeModel(QAbstractItemModel):
   
+  point_edited = Signal(DecisionPointTreeItem, DecisionPointTreeItem) # point before and after being edited
+  
   def __init__(self, rootItem=None, parent=None):
     super(DecisionTreeModel, self).__init__(parent)
     self._point_count = 0
@@ -136,9 +138,11 @@ class DecisionTreeModel(QAbstractItemModel):
   def setData(self, index, value, role):
     if role == Qt.EditRole:
       item = index.internalPointer()
+      item_copy = copy.deepcopy(item) # to keep track of the original
       item.setData(value["player"], value["sbchips"], 
                    value["bbchips"], value["board"],action=value["action"])
       self.dataChanged.emit(index, index)
+      self.point_edited.emit(item_copy, item)
       return True
     return False
   
@@ -241,6 +245,7 @@ class PointEditorItemDelegate(QStyledItemDelegate):
     point_dict["action"] = editor.playAction()
     point_dict["board"] = editor.board()
     model.setData(index, point_dict, Qt.EditRole)
+    self.commitData.emit(editor)
   
   def updateEditorGeometry(self, editor, styleOption, index):
     return None
@@ -259,7 +264,9 @@ class GameTreeView(QTreeView):
     self._tree = None
     self.model().rowsInserted.connect(self._updateTreeInsert)
     self.model().rowsRemoved.connect(self._updateTreeRemove)
-    self.setItemDelegate(PointEditorItemDelegate(boardCombo))
+    self.model().point_edited.connect(self._updateTreeEdit)
+    item_delegate = PointEditorItemDelegate(boardCombo)
+    self.setItemDelegate(item_delegate)
     
   def setStackSize(self, stackSize):
     self._stacksize = stackSize
@@ -298,12 +305,18 @@ class GameTreeView(QTreeView):
     self._tree.removeDecPt(decpt)
     self.tree_updated.emit()
     
+  def _updateTreeEdit(self, oldPoint, newPoint):
+    old_decpt = oldPoint.decPt()
+    new_decpt = newPoint.decPt()
+    self._tree.updateDecPt(old_decpt, new_decpt)
+    
 class TreeContainer(QWidget):
   
-  selection_changed = Signal(int) # integer of the point index currenly selected
+  range_changed = Signal(Range)
   
   def __init__(self, parent=None):
     super(TreeContainer, self).__init__(parent)
+    self._soln = None
     self._stacksize_compound = StackSizeCompound()
     self.combobox_compound = BoardComboCompound()
     self.dofp_compound = DoFPCompound()
@@ -350,10 +363,14 @@ class TreeContainer(QWidget):
       else:
         self._context_menu.action_add_point.setEnabled(True)
       self._context_menu.action_add_nested_point.setEnabled(True)
+      if self._soln is not None:
+        selected_range = self._soln.ranges[item.index()]
+        self.range_changed.emit(selected_range)
     else:
       self._context_menu.action_add_point.setEnabled(False)
       self._context_menu.action_add_nested_point.setEnabled(False)
       self._context_menu.action_delete_point.setEnabled(False)
+    
       
   def _getPointParams(self):
     # prepopulate the editor from the currently selected index
@@ -380,8 +397,6 @@ class TreeContainer(QWidget):
     point_params = self._getPointParams()
     selected_indexes = self._getSelectedIndexes()
     selected_point_index = selected_indexes[0]
-    point = selected_point_index.internalPointer()
-    self.selection_changed.emit(point.index())
     if point_params is None:
       return
     model = self.treeview_game.model()
@@ -391,9 +406,6 @@ class TreeContainer(QWidget):
   def _addNestedPoint(self):
     point_params = self._getPointParams()
     selected_indexes = self._getSelectedIndexes()
-    selected_point_index = selected_indexes[0]
-    point = selected_point_index.internalPointer()
-    self.selection_changed.emit(point.index())
     if point_params is None:
       return
     model = self.treeview_game.model()
@@ -430,27 +442,19 @@ class TreeContainer(QWidget):
     else: # both accepted
       range1 = dialogs[0].getRange()
       range2 = dialogs[1].getRange()
-      print("Children : {}".format(tree.children))
-      print("Parents : {}".format(tree.parents))
-      print("DecPts : {}".format(tree.decPts))
-      print("Stack : {}".format(tree.effStack))
       self._soln = doFP(tree, self.dofp_compound.spinbox_iterations.value(), range1, range2)
-      self._button_execute_fp.setEnabled(False)
+      self.dofp_compound.button_execute.setEnabled(False)
     
   def _handleTreeUpdated(self):
     self.dofp_compound.button_execute.setEnabled(True)
     
-  def _handleSelectionChanged(self, pointIndex):
-    if self._soln is not None:
-      selected_range = self._soln.ranges[pointIndex]
-      self._tableview_chart.selected_range_changed.emit(selected_range)
-      
    
 class MainWindow(QMainWindow):
   def __init__(self):
     super(MainWindow, self).__init__()
     self._tree_container = TreeContainer()
     self._tableview_chart = ChartTableView()
+    self._tree_container.range_changed.connect(self._tableview_chart.selected_range_changed)
     central_widget = QWidget()
     layout = QGridLayout()
     row = 0; col = 0

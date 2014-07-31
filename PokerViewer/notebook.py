@@ -150,10 +150,10 @@ def getEquityVsRange(hand, r, ea):
     # avoid including in the calculation hands in r that conflict with the board
     villRange = numpy.copy(r.r)
     zeroHandsWithConflicts(villRange, hand + ea.board)
-    return sum(numpy.multiply(eqs,villRange)) / sum(villRange)
+    return numpy.multiply(eqs,villRange).sum() / villRange.sum()
     
 
-class Range:
+class Range(object):
     def __init__(self, initFrac = None):
         self.r = numpy.zeros((numCards,numCards))
         if initFrac != None:
@@ -174,7 +174,7 @@ class Range:
     # Output: total number of hand combinations in the range
     # Side-effects: N/A
     def getNumHands(self):
-        return sum(self.r)
+        return self.r.sum()
     
     
     
@@ -185,7 +185,7 @@ class Range:
     def getNumHandsWithoutConflicts(self, cardslist):
         temp = numpy.copy(self.r)
         zeroHandsWithConflicts(temp, cardslist)
-        return sum(temp)
+        return temp.sum()
     
     # Input: cardslist - a list of cards in numerical format
     # Output: N?A
@@ -536,6 +536,12 @@ class Tree:
         """
         parent_index = self.decPts.index(decPt)
         self.children.pop(parent_index)
+        self.decPts.remove(decPt)
+        
+    def updateDecPt(self, oldDecPt, newDecPt):
+      # replace orldDecPt with newDecPt
+      old_point_index = self.decPts.index(oldDecPt)
+      self.decPts[old_point_index] = newDecPt
     
     #Inputs: N/A
     #Outputs: returns a PNG file displaying a tree

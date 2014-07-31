@@ -4,7 +4,7 @@ Created on Jul 28, 2014
 '''
 
 from PySide.QtGui import QTableView, QBrush
-from PySide.QtCore import QAbstractTableModel, Qt, Signal
+from PySide.QtCore import QAbstractTableModel, Qt, Signal, QModelIndex
 from notebook import Range
 
 class ChartTableModel(QAbstractTableModel):
@@ -40,12 +40,11 @@ class ChartTableModel(QAbstractTableModel):
       return chart_list[0]
     elif role == Qt.BackgroundRole:
       marked = chart_list[1]
-      brush = QBrush()
       if marked:
-        color = Qt.darkGreen
+        color = Qt.green
       else:
         color = Qt.white
-      brush.setColor(color)
+      brush = QBrush(color)
       return brush
     elif role == Qt.TextAlignmentRole:
       return Qt.AlignmentFlag.AlignCenter
@@ -64,6 +63,7 @@ class ChartTableModel(QAbstractTableModel):
           chart_list[1] = True
         else:
           chart_list[1] = False
+    self.dataChanged.emit(self.createIndex(0, 0), self.createIndex(13, 13))
   
 class ChartTableView(QTableView):
   
