@@ -4,7 +4,7 @@ Created on Jul 28, 2014
 '''
 
 from PySide.QtGui import QTableView, QBrush
-from PySide.QtCore import QAbstractTableModel, Qt, Signal, QModelIndex
+from PySide.QtCore import QAbstractTableModel, Qt, Signal
 from notebook import Range
 
 class ChartTableModel(QAbstractTableModel):
@@ -14,7 +14,7 @@ class ChartTableModel(QAbstractTableModel):
   def __init__(self, parent=None):
     super(ChartTableModel, self).__init__(parent)
     r = Range()
-    chart_list = r.getChart()
+    chart_list, _ = r.getChart()
     # convert the chart to a 2-d list of 13x13 elements
     chart = [[] for i in range(13)]
     row_being_filled = 0
@@ -22,8 +22,8 @@ class ChartTableModel(QAbstractTableModel):
       chart[row_being_filled].append(elem)
       if (i + 1) % 13  == 0:
         row_being_filled += 1
-    # the chart is a list of lists where the second value indicate whether a specific cell is marked
-    self._chart = [[[chart_value,False] for chart_value in chart_row] for chart_row in chart]
+    # the chart is a list of lists where the second value indicate a chart cell background color
+    self._chart = [[[chart_value, "#ffffff"] for chart_value in chart_row] for chart_row in chart]
     self.selected_range_changed.connect(self._handleRangeChanged)
     
   def rowCount(self, index):
@@ -34,16 +34,11 @@ class ChartTableModel(QAbstractTableModel):
   
   def data(self, index, role):
     row, col = index.row(), index.column()
-    #print(row, col)
     chart_list = self._chart[row][col]
     if role == Qt.DisplayRole:
       return chart_list[0]
     elif role == Qt.BackgroundRole:
-      marked = chart_list[1]
-      if marked:
-        color = Qt.green
-      else:
-        color = Qt.white
+      color = chart_list[1]
       brush = QBrush(color)
       return brush
     elif role == Qt.TextAlignmentRole:
@@ -54,15 +49,11 @@ class ChartTableModel(QAbstractTableModel):
       return str(section + 1)
   
   def _handleRangeChanged(self, selectedRange):
-    new_chart = selectedRange.getChart()
-    for chart_row in self._chart:
-      for chart_column in chart_row:
+    _, chart_colors = selectedRange.getChart()
+    for (i, chart_row) in enumerate(self._chart):
+      for (j, chart_column) in enumerate(chart_row):
         chart_list = chart_column
-        chart_value = chart_list[0]
-        if chart_value in new_chart:
-          chart_list[1] = True
-        else:
-          chart_list[1] = False
+        chart_list[1] = chart_colors[i * 9 + j]
     self.dataChanged.emit(self.createIndex(0, 0), self.createIndex(13, 13))
   
 class ChartTableView(QTableView):

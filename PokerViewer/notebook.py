@@ -302,11 +302,14 @@ class Range(object):
       svg = self._repr_svg_()
       svg_tree = ET.fromstring(svg)
       chart_strings = []
+      chart_colors = []
       for child in svg_tree:
         child_text = child.text
         if child_text:
           chart_strings.append(child_text)
-      return chart_strings
+        else:
+          chart_colors.append(child.get("fill"))
+      return chart_strings, chart_colors
     
     
     # Input:
