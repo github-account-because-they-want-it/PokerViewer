@@ -313,10 +313,12 @@ class GameTreeView(QTreeView):
 class TreeContainer(QWidget):
   
   range_changed = Signal(Range)
+  tree_loaded = Signal()
   
   def __init__(self, parent=None):
     super(TreeContainer, self).__init__(parent)
     self._soln = None
+    self.tree_loaded.connect(self._handleTreeLoaded)
     self._stacksize_compound = StackSizeCompound()
     self.combobox_compound = BoardComboCompound()
     self.dofp_compound = DoFPCompound()
@@ -327,7 +329,7 @@ class TreeContainer(QWidget):
     self.dofp_compound.button_execute.setEnabled(False)
     self.dofp_compound.button_execute.clicked.connect(self._executeFP)
     selection_model = self.treeview_game.selectionModel()
-    selection_model.selectionChanged.connect(self._updateMenus)
+    selection_model.selectionChanged.connect(self._handleSelectionChanged)
     layout = QGridLayout()
     control_layout = QHBoxLayout()
     control_layout.addWidget(self._stacksize_compound)
@@ -352,7 +354,7 @@ class TreeContainer(QWidget):
     mouse_pos = cme.globalPos()
     self._context_menu.popup(mouse_pos)
     
-  def _updateMenus(self, selectedIndexes, deselectedIndexes):
+  def _handleSelectionChanged(self, selectedIndexes, deselectedIndexes):
     if isinstance(selectedIndexes, QItemSelection):
       selectedIndexes = selectedIndexes.indexes()
     if len(selectedIndexes) > 0:
@@ -423,7 +425,7 @@ class TreeContainer(QWidget):
   
   def _recheckMenus(self):
     selected_indexes = self._getSelectedIndexes()
-    self._updateMenus(selected_indexes, [])
+    self._handleSelectionChanged(selected_indexes, [])
     
   def _handleSpinboxChange(self):
     self.treeview_game.setStackSize(self._stacksize_compound.spinbox_stacksize.value())
@@ -447,6 +449,11 @@ class TreeContainer(QWidget):
     
   def _handleTreeUpdated(self):
     self.dofp_compound.button_execute.setEnabled(True)
+    
+  def _handleTreeLoaded(self):
+    # the tree loading with its model recreation seems to break the selection model
+    selection_model = self.treeview_game.selectionModel()
+    selection_model.selectionChanged.connect(self._handleSelectionChanged)
     
    
 class MainWindow(QMainWindow):
@@ -491,6 +498,8 @@ class MainWindow(QMainWindow):
       root_item, tree_object = TreeLoadSaveHandler.loadTree(filename)
       self._tree_container.treeview_game.setRootItem(root_item)
       self._tree_container.treeview_game.setTreeObject(tree_object)
+      self._tree_container.dofp_compound.button_execute.setEnabled(True)
+      self._tree_container.tree_loaded.emit()
       self.statusBar().showMessage("Tree loaded", 5000)
   
 if __name__ == "__main__":

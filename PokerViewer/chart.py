@@ -3,7 +3,7 @@ Created on Jul 28, 2014
 @author: Mohammed Hamdy
 '''
 
-from PySide.QtGui import QTableView, QBrush
+from PySide.QtGui import QTableView, QBrush, QColor
 from PySide.QtCore import QAbstractTableModel, Qt, Signal
 from notebook import Range
 
@@ -39,6 +39,7 @@ class ChartTableModel(QAbstractTableModel):
       return chart_list[0]
     elif role == Qt.BackgroundRole:
       color = chart_list[1]
+      color = QColor(color)
       brush = QBrush(color)
       return brush
     elif role == Qt.TextAlignmentRole:
@@ -53,7 +54,7 @@ class ChartTableModel(QAbstractTableModel):
     for (i, chart_row) in enumerate(self._chart):
       for (j, chart_column) in enumerate(chart_row):
         chart_list = chart_column
-        chart_list[1] = chart_colors[i * 9 + j]
+        chart_list[1] = chart_colors[i * 12 + j]
     self.dataChanged.emit(self.createIndex(0, 0), self.createIndex(13, 13))
   
 class ChartTableView(QTableView):
