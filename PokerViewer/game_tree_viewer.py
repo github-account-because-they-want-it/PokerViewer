@@ -139,8 +139,13 @@ class DecisionTreeModel(QAbstractItemModel):
     if role == Qt.EditRole:
       item = index.internalPointer()
       item_copy = copy.deepcopy(item) # to keep track of the original
+      # check if boards differ between old and new items. if so, propagate the change to children
+      original_board = item.board()
+      new_board = value["board"]
+      if original_board != new_board:
+        self._propagateBoardToChildrenOf(item, new_board)
       item.setData(value["player"], value["sbchips"], 
-                   value["bbchips"], value["board"],action=value["action"])
+                   value["bbchips"], value["board"], action=value["action"])
       self.dataChanged.emit(index, index)
       self.point_edited.emit(item_copy, item)
       return True
@@ -217,6 +222,17 @@ class DecisionTreeModel(QAbstractItemModel):
                                              board=pointDict["board"], parentDec=parent)
     self._point_count += 1
     return dec_pt
+  
+  def _propagateBoardToChildrenOf(self, item, newBoard):
+    item_children = item.children()
+    if len(item_children) == 0:
+      return
+    else:
+      for child in item_children:
+        child_copy = copy.deepcopy(child)
+        child.setData(board=newBoard)
+        self.point_edited.emit(child_copy, child)
+        self._propagateBoardToChildrenOf(child, newBoard)
     
 class PointEditorItemDelegate(QStyledItemDelegate):
   
@@ -313,6 +329,7 @@ class GameTreeView(QTreeView):
     old_decpt = oldPoint.decPt()
     new_decpt = newPoint.decPt()
     self._tree.updateDecPt(old_decpt, new_decpt)
+    self.tree_updated.emit()
     
 class TreeContainer(QWidget):
   
@@ -458,6 +475,7 @@ class TreeContainer(QWidget):
     # the tree loading with its model recreation seems to break the selection model
     selection_model = self.treeview_game.selectionModel()
     selection_model.selectionChanged.connect(self._handleSelectionChanged)
+    self.treeview_game.expandAll()
     
    
 class MainWindow(QMainWindow):
