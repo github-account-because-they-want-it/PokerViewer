@@ -53,10 +53,10 @@ class EquityArray:
         self.board = b
         self.eArray = numpy.zeros((numCards,numCards,numCards,numCards))
         if os.path.isfile(self.getFilename()):
-            self.eArray = numpy.load(self.getFilename())
+            self.eArray = numpy.load(self.getFilename(), mmap_mode='r')
         else:           
             self.makeArray()
-            
+         
     def makeArray(self):
         for i in range(numCards):
             for j in range(numCards):
@@ -86,7 +86,7 @@ class EquityArray:
       # load equity arrays from disk and return equity arrays 
       equity_list = []
       if path is None: # search is the script directory
-        path = os.path.abspath(os.path.join(__file__, os.path.pardir))
+        path = os.path.dirname(__file__)
       files_here = os.listdir(path)
       board_files = [f for f in files_here if f.endswith(".ea.npy")]
       board_files = board_files[:maxBoards]

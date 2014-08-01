@@ -138,7 +138,7 @@ class DecisionTreeModel(QAbstractItemModel):
   def setData(self, index, value, role):
     if role == Qt.EditRole:
       item = index.internalPointer()
-      item_copy = copy.deepcopy(item) # to keep track of the original
+      item_copy = copy.copy(item) # to keep track of the original
       # check if boards differ between old and new items. if so, propagate the change to children
       original_board = item.board()
       new_board = value["board"]
@@ -229,7 +229,7 @@ class DecisionTreeModel(QAbstractItemModel):
       return
     else:
       for child in item_children:
-        child_copy = copy.deepcopy(child)
+        child_copy = copy.copy(child)
         child.setData(board=newBoard)
         self.point_edited.emit(child_copy, child)
         self._propagateBoardToChildrenOf(child, newBoard)
