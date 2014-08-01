@@ -262,11 +262,14 @@ class GameTreeView(QTreeView):
     self.setModel(DecisionTreeModel())
     self._stacksize = treeStackSize
     self._tree = None
+    self._connectModel()
+    item_delegate = PointEditorItemDelegate(boardCombo)
+    self.setItemDelegate(item_delegate)
+    
+  def _connectModel(self):
     self.model().rowsInserted.connect(self._updateTreeInsert)
     self.model().rowsRemoved.connect(self._updateTreeRemove)
     self.model().point_edited.connect(self._updateTreeEdit)
-    item_delegate = PointEditorItemDelegate(boardCombo)
-    self.setItemDelegate(item_delegate)
     
   def setStackSize(self, stackSize):
     self._stacksize = stackSize
@@ -283,6 +286,7 @@ class GameTreeView(QTreeView):
   def setRootItem(self, rootItem):
     model = DecisionTreeModel(rootItem)
     self.setModel(model)
+    self._connectModel()
     
   def _updateTreeInsert(self, parentIndex, start, end):
     # start should be the same as end because we are inserting single rows
