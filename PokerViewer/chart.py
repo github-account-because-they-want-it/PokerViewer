@@ -66,4 +66,5 @@ class ChartTableView(QTableView):
     model = ChartTableModel()
     self.selected_range_changed.connect(model.selected_range_changed)
     self.setModel(model)
+    [self.setColumnWidth(i, 38) for i in range(13)]
     
