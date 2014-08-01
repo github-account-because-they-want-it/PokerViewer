@@ -108,7 +108,10 @@ class EquityArray:
     
       
 class MyEquityArray(EquityArray):
-  
+  """
+  Adds a string representation to MyEquityArray, the needed boardArray property
+  and makes the object consume much less space when pickled
+  """
   def __init__(self, boardArray):
     EquityArray.__init__(self, pe.string2card(boardArray))
     self._board_array = boardArray
@@ -125,6 +128,11 @@ class MyEquityArray(EquityArray):
   def __setstate__(self, state):
     inst = MyEquityArray(state)
     self.__dict__ = inst.__dict__
+    
+  def __eq__(self, other):
+    if isinstance(other, MyEquityArray):
+      return self._board_array == other._board_array
+    return NotImplemented
     
   def __str__(self):
     return ''.join(self._board_array)
