@@ -1,3 +1,7 @@
+"""
+Credits go mostly to Swifty1 for the code.
+Some edits by me
+"""
 import os
 import pokereval, numpy, scipy.misc, pydot
 from matplotlib import pyplot as plot
